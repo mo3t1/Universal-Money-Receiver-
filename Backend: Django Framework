@@ -1,0 +1,103 @@
+# Backend: Django Framework
+
+# Install Dependencies
+# pip install django djangorestframework psycopg2-binary
+
+import os
+from django.conf import settings
+from django.db import models
+from django.contrib.auth.models import User
+from rest_framework import serializers, views, status
+from rest_framework.response import Response
+from django.urls import path
+from django.core.wsgi import get_wsgi_application
+
+# Settings Configuration
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SECRET_KEY = 'replace-this-with-a-secure-key'
+DEBUG = True
+ALLOWED_HOSTS = []
+INSTALLED_APPS = [
+    'django.contrib.contenttypes',
+    'django.contrib.staticfiles',
+    'rest_framework',
+    'moneyapp',
+]
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'moneyhub',
+        'USER': 'postgres',
+        'PASSWORD': 'password',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
+MIDDLEWARE = [
+    'django.middleware.common.CommonMiddleware',
+]
+ROOT_URLCONF = 'main'
+WSGI_APPLICATION = 'main.application'
+STATIC_URL = '/static/'
+
+settings.configure(
+    BASE_DIR=BASE_DIR,
+    SECRET_KEY=SECRET_KEY,
+    DEBUG=DEBUG,
+    ALLOWED_HOSTS=ALLOWED_HOSTS,
+    INSTALLED_APPS=INSTALLED_APPS,
+    DATABASES=DATABASES,
+    MIDDLEWARE=MIDDLEWARE,
+    ROOT_URLCONF=ROOT_URLCONF,
+    STATIC_URL=STATIC_URL,
+    WSGI_APPLICATION=WSGI_APPLICATION,
+)
+
+default_app_config = 'moneyapp.apps.MoneyappConfig'
+application = get_wsgi_application()
+
+# Models
+class Transaction(models.Model):
+    reference_number = models.CharField(max_length=100, unique=True)
+    pin = models.CharField(max_length=10)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, default='Pending')
+
+# Serializers
+class TransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = '__all__'
+
+# Views
+class ValidateWithdrawView(views.APIView):
+    def post(self, request):
+        reference_number = request.data.get('reference_number')
+        pin = request.data.get('pin')
+        try:
+            transaction = Transaction.objects.get(reference_number=reference_number, pin=pin)
+            transaction.status = 'Completed'
+            transaction.save()
+            return Response({'message': 'Transaction validated successfully.'}, status=status.HTTP_200_OK)
+        except Transaction.DoesNotExist:
+            return Response({'error': 'Invalid reference number or PIN.'}, status=status.HTTP_400_BAD_REQUEST)
+
+class TransactionHistoryView(views.APIView):
+    def get(self, request):
+        transactions = Transaction.objects.all()
+        serializer = TransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
+
+# URL Configuration
+urlpatterns = [
+    path('validate-withdraw/', ValidateWithdrawView.as_view()),
+    path('transaction-history/', TransactionHistoryView.as_view()),
+]
+
+# Run Django Server
+if __name__ == "__main__":
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'main')
+    import django
+    django.setup()
+    from django.core.management import execute_from_command_line
+    execute_from_command_line(['manage.py', 'runserver'])
